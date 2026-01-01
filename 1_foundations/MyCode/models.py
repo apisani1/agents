@@ -29,7 +29,14 @@ class ChatModel:
             raise ValueError("Unsupported provider")
 
     def generate_response(
-        self, messages, *, max_tokens=10000, structured_response=False, response_format=None, print_response=False, **kwargs
+        self,
+        messages,
+        *,
+        max_tokens=10000,
+        structured_response=False,
+        response_format=None,
+        print_response=False,
+        **kwargs,
     ):
         if isinstance(self.client, OpenAI):
             if not structured_response:
@@ -49,6 +56,10 @@ class ChatModel:
                 **kwargs,
             )
             answer = response.content[0].text
-        if print_response:
-            display(Markdown(answer))
+        if print_response and isinstance(answer, str):
+            try:
+                get_ipython()  # type: ignore
+                display(Markdown(answer))
+            except NameError:
+                print(answer)
         return answer

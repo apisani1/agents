@@ -14,8 +14,6 @@ class Evaluation(BaseModel):
     feedback: str
 
 
-load_dotenv(find_dotenv(), override=True)
-
 GENERATOR_PROMPT = """You are a helpful AI assistant.
 Your responsibility is to provide accurate, professional, and engaging responses to user questions.
 Be clear and concise in your answers.
@@ -39,6 +37,8 @@ def chat_factory(
     evaluator_model: Optional[ChatModel] = None,
     evaluator_system_prompt=EVALUATOR_PROMPT,
 ):
+    load_dotenv(find_dotenv(), override=True)
+
     generator_model = generator_model or ChatModel(model_name="gpt-4o-mini")
     evaluator_model = evaluator_model or ChatModel(model_name="gpt-4o-mini")
 
