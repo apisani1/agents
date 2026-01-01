@@ -28,10 +28,19 @@ class ChatModel:
         else:
             raise ValueError("Unsupported provider")
 
-    def generate_response(self, messages, *, max_tokens=10000, print_response=False, **kwargs):
+    def generate_response(
+        self, messages, *, max_tokens=10000, structured_response=False, response_format=None, print_response=False, **kwargs
+    ):
         if isinstance(self.client, OpenAI):
-            response = self.client.chat.completions.create(model=self.model_name, messages=messages, **kwargs)
-            answer = response.choices[0].message.content
+            if not structured_response:
+                response = self.client.chat.completions.create(model=self.model_name, messages=messages, **kwargs)
+                answer = response.choices[0].message.content
+            else:
+                response = self.client.beta.chat.completions.parse(
+                    model="gpt-4o-mini", messages=messages, response_format=response_format, **kwargs  # type: ignore
+                )
+                answer = response.choices[0].message.parsed
+
         elif isinstance(self.client, Anthropic):
             response = self.client.messages.create(
                 model=self.model_name,
