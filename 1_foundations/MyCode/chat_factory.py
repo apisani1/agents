@@ -78,7 +78,7 @@ def chat_factory(
         reply = generator_model.generate_response(messages)
 
         responses = 1
-        while responses <= response_limit:
+        while responses < response_limit:
 
             evaluation = evaluate(reply)
 

@@ -1,7 +1,7 @@
 import os
-from openai import OpenAI
+
 from anthropic import Anthropic
-from IPython.display import Markdown, display
+from openai import OpenAI
 
 
 OPENAI_CLIENT_MAP = {
@@ -28,6 +28,58 @@ class ChatModel:
         else:
             raise ValueError("Unsupported provider")
 
+    @staticmethod
+    def _extract_system_messages(messages):
+        """
+        Extract consecutive system messages from the beginning of a message list.
+
+        Anthropic's API requires system messages to be passed via a separate 'system'
+        parameter rather than in the messages array.
+
+        Args:
+            messages: List of message dictionaries with 'role' and 'content' keys
+
+        Returns:
+            tuple: (system_content, remaining_messages)
+                - system_content: Combined system message string or None
+                - remaining_messages: Messages list without system messages
+        """
+        system_messages = []
+        remaining_messages = messages
+
+        while remaining_messages and remaining_messages[0].get("role") == "system":
+            system_messages.append(remaining_messages[0]["content"])
+            remaining_messages = remaining_messages[1:]
+
+        system_content = "\n\n".join(system_messages) if system_messages else None
+        return system_content, remaining_messages
+
+    @staticmethod
+    def _prepare_tool_params(structured_response, response_format):
+        """
+        Prepare tool parameters for Anthropic's structured response via tool use.
+
+        Args:
+            structured_response: Whether to request a structured response
+            response_format: Pydantic model defining the expected response structure
+
+        Returns:
+            dict: Tool parameters for the API call, or empty dict if not using structured response
+        """
+        if not structured_response:
+            return {}
+
+        return {
+            "tools": [
+                {
+                    "name": "structured_response",
+                    "description": "Return a structured response",
+                    "input_schema": response_format.model_json_schema(),
+                }
+            ],
+            "tool_choice": {"type": "tool", "name": "structured_response"},
+        }
+
     def generate_response(
         self,
         messages,
@@ -38,6 +90,9 @@ class ChatModel:
         print_response=False,
         **kwargs,
     ):
+        if structured_response and response_format is None:
+            raise ValueError("response_format must be provided when structured_response=True")
+
         if isinstance(self.client, OpenAI):
             if not structured_response:
                 response = self.client.chat.completions.create(model=self.model_name, messages=messages, **kwargs)
@@ -50,46 +105,39 @@ class ChatModel:
 
         elif isinstance(self.client, Anthropic):
             # Anthropic uses a separate 'system' parameter instead of system messages in the array
-            system_content = None
-            anthropic_messages = messages
-            if messages and messages[0].get("role") == "system":
-                system_content = messages[0]["content"]
-                anthropic_messages = messages[1:]  # Remove system message from messages array
+            system_content, anthropic_messages = self._extract_system_messages(messages)
 
+            # Prepare tool parameters only if structured response is requested
+            tool_params = self._prepare_tool_params(structured_response, response_format)
+
+            # Single API call with conditional tool parameters
+            response = self.client.messages.create(
+                model=self.model_name,
+                messages=anthropic_messages,
+                max_tokens=max_tokens,
+                system=system_content,  # type: ignore
+                **tool_params,  # Only includes tools/tool_choice if structured_response=True
+                **kwargs,
+            )
+
+            # Extract answer based on response type
             if not structured_response:
-                response = self.client.messages.create(
-                    model=self.model_name,
-                    messages=anthropic_messages,
-                    max_tokens=max_tokens,
-                    system=system_content,  # type: ignore
-                    **kwargs,
-                )
                 answer = response.content[0].text
             else:
-                # Use tool use for structured output with Anthropic
-                tools = [
-                    {
-                        "name": "structured_response",
-                        "description": "Return a structured response",
-                        "input_schema": response_format.model_json_schema(),  # type: ignore
-                    }
-                ]
-                response = self.client.messages.create(
-                    model=self.model_name,
-                    messages=anthropic_messages,
-                    max_tokens=max_tokens,
-                    system=system_content,  # type: ignore
-                    tools=tools,  # type: ignore
-                    tool_choice={"type": "tool", "name": "structured_response"},
-                    **kwargs,
-                )
-                # Extract the tool use result and parse into Pydantic model
+                # Extract structured data from tool use: find the tool_use block and instantiate the Pydantic model
                 tool_use = next(block for block in response.content if block.type == "tool_use")
                 answer = response_format(**tool_use.input)  # type: ignore
+
         if print_response and isinstance(answer, str):
             try:
-                get_ipython()  # type: ignore
-                display(Markdown(answer))
-            except NameError:
+                from IPython.display import (
+                    Markdown,
+                    display,
+                )
+
+                get_ipython()  # type: ignore # Not defined if not in a IPython environment
+                display(Markdown(answer))  # Use IPython display only if in a notebook
+            except (ImportError, NameError):
                 print(answer)
+
         return answer
