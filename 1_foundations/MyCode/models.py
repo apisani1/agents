@@ -178,6 +178,9 @@ class ChatModel:
                 tool_use = next(block for block in response.content if block.type == "tool_use")
                 answer = response_format(**tool_use.input)  # type: ignore
 
+        else:
+            raise ValueError(f"Unsupported client type: {type(self.client).__name__}")
+
         if print_response and isinstance(answer, str):
             try:
                 from IPython.display import (
