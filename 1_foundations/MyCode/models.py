@@ -160,7 +160,7 @@ class ChatModel:
             # Prepare tool parameters only if structured response is requested
             tool_params = self._prepare_tool_params(structured_response, response_format)
 
-            # Single API call with conditional tool parameters
+            # Single API call with conditional tool parameters for structured response
             response = self.client.messages.create(
                 model=self.model_name,
                 messages=anthropic_messages,
