@@ -147,7 +147,7 @@ class ChatModel:
                 answer = response.choices[0].message.content
             else:
                 response = self.client.beta.chat.completions.parse(
-                    model="gpt-4o-mini", messages=messages, response_format=response_format, **kwargs  # type: ignore
+                    model=self.model_name, messages=messages, response_format=response_format, **kwargs  # type: ignore
                 )
                 answer = response.choices[0].message.parsed
 
