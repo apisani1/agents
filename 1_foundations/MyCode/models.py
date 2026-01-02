@@ -90,6 +90,54 @@ class ChatModel:
         print_response=False,
         **kwargs,
     ):
+        """
+        Generate a response from the LLM using the configured provider.
+
+        Supports both text and structured responses across multiple LLM providers
+        (OpenAI, Anthropic, Google, DeepSeek, Groq, Ollama).
+
+        Args:
+            messages: List of message dictionaries with 'role' and 'content' keys.
+                     Standard roles: 'system', 'user', 'assistant'.
+            max_tokens: Maximum tokens in the response (default: 10000).
+                       Only used for Anthropic; OpenAI uses default from API.
+            structured_response: If True, return a structured Pydantic model instance
+                               instead of text (default: False).
+            response_format: Pydantic model class for structured responses.
+                           Required when structured_response=True.
+            print_response: If True, display the response (markdown in notebooks,
+                          plain text in scripts) (default: False).
+            **kwargs: Additional provider-specific parameters passed to the API.
+
+        Returns:
+            str | BaseModel: Response text (str) or Pydantic model instance if
+                           structured_response=True.
+
+        Raises:
+            ValueError: If structured_response=True but response_format=None.
+
+        Examples:
+            Basic text response:
+                >>> model = ChatModel("gpt-4o-mini")
+                >>> response = model.generate_response([
+                ...     {"role": "user", "content": "Hello!"}
+                ... ])
+
+            Structured response:
+                >>> class Answer(BaseModel):
+                ...     text: str
+                ...     confidence: float
+                >>> response = model.generate_response(
+                ...     messages=[{"role": "user", "content": "What is 2+2?"}],
+                ...     structured_response=True,
+                ...     response_format=Answer
+                ... )
+
+        Note:
+            - OpenAI: Uses native parse API for structured responses
+            - Anthropic: Uses tool calling for structured responses
+            - System messages: Automatically handled per provider requirements
+        """
         if structured_response and response_format is None:
             raise ValueError("response_format must be provided when structured_response=True")
 
