@@ -1,6 +1,12 @@
 import gradio as gr
-from pypdf import PdfReader
 from chat_factory import chat_factory
+from models import ChatModel
+from pypdf import PdfReader
+from dotenv import (
+    find_dotenv,
+    load_dotenv,
+)
+
 
 reader = PdfReader("../me/linkedin.pdf")
 linkedin = ""
@@ -33,10 +39,19 @@ With this context, please evaluate the latest response, replying with whether th
 
 
 def main():
+    generator = ChatModel(model_name="gpt-4o-mini", provider="openai")
+    evaluator = ChatModel(model_name="claude-sonnet-4-5", provider="anthropic")
     gr.ChatInterface(
-        chat_factory(system_prompt=ED_GENERATOR_PROMPT, evaluator_system_prompt=ED_EVALUATOR_PROMPT), type="messages"
+        chat_factory(
+            generator_model=generator,
+            system_prompt=ED_GENERATOR_PROMPT,
+            evaluator_model=evaluator,
+            evaluator_system_prompt=ED_EVALUATOR_PROMPT,
+        ),
+        type="messages",
     ).launch()
 
 
 if __name__ == "__main__":
+    load_dotenv(find_dotenv(), override=True)
     main()

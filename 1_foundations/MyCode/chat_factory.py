@@ -33,9 +33,10 @@ Please evaluate the latest response and provide feedback."""
 
 def chat_factory(
     generator_model: Optional[ChatModel] = None,
-    system_prompt=GENERATOR_PROMPT,
+    system_prompt: str = GENERATOR_PROMPT,
     evaluator_model: Optional[ChatModel] = None,
-    evaluator_system_prompt=EVALUATOR_PROMPT,
+    evaluator_system_prompt: str = EVALUATOR_PROMPT,
+    response_limit: int = 5,
 ):
     load_dotenv(find_dotenv(), override=True)
 
@@ -76,7 +77,8 @@ def chat_factory(
         messages = [{"role": "system", "content": system_prompt}] + history + [{"role": "user", "content": message}]
         reply = generator_model.generate_response(messages)
 
-        while True:
+        responses = 1
+        while responses <= response_limit:
 
             evaluation = evaluate(reply)
 
@@ -87,7 +89,9 @@ def chat_factory(
                 print("Failed evaluation - retrying")
                 print(evaluation.feedback)
                 reply = rerun(reply, evaluation.feedback)
+                responses += 1
 
+        print(f"****Final response after {responses} attempt(s).")
         return reply
 
     return chat

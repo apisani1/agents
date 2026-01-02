@@ -49,13 +49,43 @@ class ChatModel:
                 answer = response.choices[0].message.parsed
 
         elif isinstance(self.client, Anthropic):
-            response = self.client.messages.create(
-                model=self.model_name,
-                messages=messages,
-                max_tokens=max_tokens,
-                **kwargs,
-            )
-            answer = response.content[0].text
+            # Anthropic uses a separate 'system' parameter instead of system messages in the array
+            system_content = None
+            anthropic_messages = messages
+            if messages and messages[0].get("role") == "system":
+                system_content = messages[0]["content"]
+                anthropic_messages = messages[1:]  # Remove system message from messages array
+
+            if not structured_response:
+                response = self.client.messages.create(
+                    model=self.model_name,
+                    messages=anthropic_messages,
+                    max_tokens=max_tokens,
+                    system=system_content,  # type: ignore
+                    **kwargs,
+                )
+                answer = response.content[0].text
+            else:
+                # Use tool use for structured output with Anthropic
+                tools = [
+                    {
+                        "name": "structured_response",
+                        "description": "Return a structured response",
+                        "input_schema": response_format.model_json_schema(),  # type: ignore
+                    }
+                ]
+                response = self.client.messages.create(
+                    model=self.model_name,
+                    messages=anthropic_messages,
+                    max_tokens=max_tokens,
+                    system=system_content,  # type: ignore
+                    tools=tools,  # type: ignore
+                    tool_choice={"type": "tool", "name": "structured_response"},
+                    **kwargs,
+                )
+                # Extract the tool use result and parse into Pydantic model
+                tool_use = next(block for block in response.content if block.type == "tool_use")
+                answer = response_format(**tool_use.input)  # type: ignore
         if print_response and isinstance(answer, str):
             try:
                 get_ipython()  # type: ignore
