@@ -104,7 +104,9 @@ class ChatModel:
                 answer = response.choices[0].message.parsed
 
         elif isinstance(self.client, Anthropic):
-            # Anthropic uses a separate 'system' parameter instead of system messages in the array
+            # Anthropic API differences:
+            # 1. Uses separate 'system' parameter instead of system messages in the array
+            # 2. Uses tool calling (function calling) for structured output instead of a native parse API
             system_content, anthropic_messages = self._extract_system_messages(messages)
 
             # Prepare tool parameters only if structured response is requested
