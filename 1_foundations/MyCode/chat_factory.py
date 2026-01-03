@@ -35,6 +35,45 @@ Consider whether the response:
 Please evaluate the latest response and provide feedback."""
 
 
+def _convert_custom_tools_to_openai(custom_tools):
+    """
+    Convert custom tool format to OpenAI format.
+
+    Custom format: {"function": callable, "description": str, "parameters": dict}
+    OpenAI format: {"type": "function", "function": {"name": str, "description": str, "parameters": dict}}
+
+    Args:
+        custom_tools: List of tools in custom format with function references
+
+    Returns:
+        tuple: (openai_tools, tool_map)
+            - openai_tools: List of tools in OpenAI format
+            - tool_map: Dict mapping function names to actual functions
+    """
+    if not custom_tools:
+        return [], {}
+
+    openai_tools = []
+    tool_map = {}
+
+    for tool in custom_tools:
+        func = tool["function"]
+        func_name = func.__name__
+
+        openai_tools.append({
+            "type": "function",
+            "function": {
+                "name": func_name,
+                "description": tool["description"],
+                "parameters": tool["parameters"]
+            }
+        })
+
+        tool_map[func_name] = func
+
+    return openai_tools, tool_map
+
+
 def chat_factory(
     generator_model: Optional[ChatModel] = None,
     system_prompt: str = GENERATOR_PROMPT,
@@ -47,6 +86,9 @@ def chat_factory(
 
     generator_model = generator_model or ChatModel(model_name="gpt-4o-mini")
     evaluator_model = evaluator_model or ChatModel(model_name="gpt-4o-mini")
+
+    # Convert custom tools to OpenAI format and create tool map
+    openai_tools, tool_map = _convert_custom_tools_to_openai(tools)
 
     def chat(message, history):
 
@@ -73,8 +115,9 @@ def chat_factory(
                 tool_name = tool_call.function.name
                 arguments = json.loads(tool_call.function.arguments)
                 print(f"Tool called: {tool_name}", flush=True)
-                tool = globals().get(tool_name)
+                tool = tool_map.get(tool_name)
                 result = tool(**arguments) if tool else {}
+                print(f"Tool result: {result}", flush=True)
                 results.append(generator_model.format_tool_result(tool_call_id=tool_call.id, result=result))
             return results
 
@@ -82,10 +125,9 @@ def chat_factory(
             messages = extended_history.copy()
             reply = generator_model.generate_response(
                 messages=messages,
-                tools=tools,
+                tools=openai_tools,
             )
             while isinstance(reply, list):
-                # Add assistant message with tool calls
                 messages.append({
                     "role": "assistant",
                     "content": None,
@@ -94,7 +136,7 @@ def chat_factory(
                 messages += handle_tool_call(reply)
                 reply = generator_model.generate_response(
                     messages=messages,
-                    tools=tools,
+                    tools=openai_tools,
                 )
             return reply, messages
 
@@ -108,7 +150,7 @@ def chat_factory(
             messages = (
                 [{"role": "system", "content": updated_system_prompt}]
                 + extended_history[1:]  # exclude previous system prompt
-                + [{"role": "user", "content": message}]
+                # + [{"role": "user", "content": message}]
             )
             return get_reply(messages)
 
