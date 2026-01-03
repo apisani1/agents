@@ -57,8 +57,12 @@ def chat_factory(
                 {"role": "user", "content": evaluator_user_prompt(reply)}
             ]
             return evaluator_model.generate_response(
-                messages=messages, structured_response=True, response_format=Evaluation
+                messages=messages, response_format=Evaluation
             )  # type: ignore
+
+        def sanitize_messages(messages):
+            """Remove extra fields from messages that may be added by Gradio or other UIs."""
+            return [{"role": msg["role"], "content": msg["content"]} for msg in messages]
 
         def rerun(reply, feedback):
             updated_system_prompt = (
@@ -69,12 +73,16 @@ def chat_factory(
             updated_system_prompt += f"## Reason for rejection:\n{feedback}\n\n"
             messages = (
                 [{"role": "system", "content": updated_system_prompt}]
-                + history
+                + sanitize_messages(history)
                 + [{"role": "user", "content": message}]
             )
             return generator_model.generate_response(messages)
 
-        messages = [{"role": "system", "content": system_prompt}] + history + [{"role": "user", "content": message}]
+        messages = (
+            [{"role": "system", "content": system_prompt}]
+            + sanitize_messages(history)
+            + [{"role": "user", "content": message}]
+        )
         reply = generator_model.generate_response(messages)
 
         responses = 1
