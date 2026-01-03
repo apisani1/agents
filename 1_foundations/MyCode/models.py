@@ -300,11 +300,11 @@ class ChatModel:
             dict: Formatted message to append to conversation history
 
         Examples:
-                >>> result_msg = model.format_tool_result(
-                ...     tool_call_id="call_123",
-                ...     result={"temp": 72, "condition": "sunny"}
-                ... )
-                >>> messages.append(result_msg)
+            >>> result_msg = model.format_tool_result(
+            ...     tool_call_id="call_123",
+            ...     result={"temp": 72, "condition": "sunny"}
+            ... )
+            >>> messages.append(result_msg)
         """
         if isinstance(self.client, OpenAI):
             return {

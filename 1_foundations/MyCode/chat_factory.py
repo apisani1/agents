@@ -1,4 +1,8 @@
-from typing import Optional
+import json
+from typing import (
+    List,
+    Optional,
+)
 
 from pydantic import BaseModel
 
@@ -37,6 +41,7 @@ def chat_factory(
     evaluator_model: Optional[ChatModel] = None,
     evaluator_system_prompt: str = EVALUATOR_PROMPT,
     response_limit: int = 5,
+    tools: Optional[List] = None,
 ):
     load_dotenv(find_dotenv(), override=True)
 
@@ -45,26 +50,55 @@ def chat_factory(
 
     def chat(message, history):
 
-        def evaluator_user_prompt(reply):
-            user_prompt = f"Here's the conversation between the User and the Agent: \n\n{history}\n\n"
-            user_prompt += f"Here's the latest message from the User: \n\n{message}\n\n"
-            user_prompt += f"Here's the latest response from the Agent: \n\n{reply}\n\n"
+        def evaluator_user_prompt(user_message, agent_reply, extended_history) -> str:
+            user_prompt = f"Here's the conversation between the User and the Agent: \n\n{extended_history}\n\n"
+            user_prompt += f"Here's the latest message from the User: \n\n{user_message}\n\n"
+            user_prompt += f"Here's the latest response from the Agent: \n\n{agent_reply}\n\n"
             user_prompt += "Please evaluate the response, replying with whether it is acceptable and your feedback."
             return user_prompt
 
-        def evaluate(reply) -> Evaluation:
+        def evaluate(user_message, agent_reply, extended_history) -> Evaluation:
             messages = [{"role": "system", "content": evaluator_system_prompt}] + [
-                {"role": "user", "content": evaluator_user_prompt(reply)}
+                {"role": "user", "content": evaluator_user_prompt(user_message, agent_reply, extended_history)}
             ]
-            return evaluator_model.generate_response(
-                messages=messages, response_format=Evaluation
-            )  # type: ignore
+            return evaluator_model.generate_response(messages=messages, response_format=Evaluation)  # type: ignore
 
         def sanitize_messages(messages):
             """Remove extra fields from messages that may be added by Gradio or other UIs."""
             return [{"role": msg["role"], "content": msg["content"]} for msg in messages]
 
-        def rerun(reply, feedback):
+        def handle_tool_call(tool_calls):
+            results = []
+            for tool_call in tool_calls:
+                tool_name = tool_call.function.name
+                arguments = json.loads(tool_call.function.arguments)
+                print(f"Tool called: {tool_name}", flush=True)
+                tool = globals().get(tool_name)
+                result = tool(**arguments) if tool else {}
+                results.append(generator_model.format_tool_result(tool_call_id=tool_call.id, result=result))
+            return results
+
+        def get_reply(extended_history):
+            messages = extended_history.copy()
+            reply = generator_model.generate_response(
+                messages=messages,
+                tools=tools,
+            )
+            while isinstance(reply, list):
+                # Add assistant message with tool calls
+                messages.append({
+                    "role": "assistant",
+                    "content": None,
+                    "tool_calls": reply
+                })
+                messages += handle_tool_call(reply)
+                reply = generator_model.generate_response(
+                    messages=messages,
+                    tools=tools,
+                )
+            return reply, messages
+
+        def rerun(reply, feedback, extended_history):
             updated_system_prompt = (
                 system_prompt
                 + "\n\n## Previous answer rejected\nYou just tried to reply, but the quality control rejected your reply\n"
@@ -73,22 +107,22 @@ def chat_factory(
             updated_system_prompt += f"## Reason for rejection:\n{feedback}\n\n"
             messages = (
                 [{"role": "system", "content": updated_system_prompt}]
-                + sanitize_messages(history)
+                + extended_history[1:]  # exclude previous system prompt
                 + [{"role": "user", "content": message}]
             )
-            return generator_model.generate_response(messages)
+            return get_reply(messages)
 
         messages = (
             [{"role": "system", "content": system_prompt}]
             + sanitize_messages(history)
             + [{"role": "user", "content": message}]
         )
-        reply = generator_model.generate_response(messages)
+        reply, extended_history = get_reply(messages)
 
         responses = 1
         while responses < response_limit:
 
-            evaluation = evaluate(reply)
+            evaluation = evaluate(message, reply, extended_history)
 
             if evaluation.is_acceptable:
                 print("Passed evaluation - returning reply")
@@ -96,7 +130,7 @@ def chat_factory(
             else:
                 print("Failed evaluation - retrying")
                 print(evaluation.feedback)
-                reply = rerun(reply, evaluation.feedback)
+                reply, extended_history = rerun(reply, evaluation.feedback, extended_history)
                 responses += 1
 
         print(f"****Final response after {responses} attempt(s).")
