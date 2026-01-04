@@ -56,6 +56,13 @@ def _parse_google_docstring(docstring):
     if not docstring:
         return "", {}
 
+    # Ensure docstring is a string
+    if not isinstance(docstring, str):
+        warnings.warn(
+            f"Docstring must be a string, got {type(docstring).__name__}. Using empty docstring."
+        )
+        return "", {}
+
     # Clean up the docstring
     docstring = inspect.cleandoc(docstring)
 
