@@ -4,13 +4,14 @@ from typing import (
     Optional,
 )
 
-from pydantic import BaseModel
-
 from dotenv import (
     find_dotenv,
     load_dotenv,
 )
+from pydantic import BaseModel
+
 from models import ChatModel
+from schema_utils import extract_function_schema
 
 
 class Evaluation(BaseModel):
@@ -35,15 +36,17 @@ Consider whether the response:
 Please evaluate the latest response and provide feedback."""
 
 
-def _convert_custom_tools_to_openai(custom_tools):
+def _convert_tools_to_openai(custom_tools):
     """
-    Convert custom tool format to OpenAI format.
+    Convert custom tool format to OpenAI format with auto-schema generation.
 
-    Custom format: {"function": callable, "description": str, "parameters": dict}
-    OpenAI format: {"type": "function", "function": {"name": str, "description": str, "parameters": dict}}
+    Supports multiple input formats:
+    1. Just function: [func1, func2] - Auto-generates everything from signature and docstring
+    2. Dict with auto-gen: [{"function": func1}] - Auto-generates schema, optional description override
+    3. Dict with manual: [{"function": func1, "parameters": {...}}] - Backward compatible
 
     Args:
-        custom_tools: List of tools in custom format with function references
+        custom_tools: List of tools (functions or dicts with function references)
 
     Returns:
         tuple: (openai_tools, tool_map)
@@ -57,16 +60,35 @@ def _convert_custom_tools_to_openai(custom_tools):
     tool_map = {}
 
     for tool in custom_tools:
-        func = tool["function"]
+        # Determine format and extract function
+        if callable(tool):
+            # Format 1: Just a function - auto-generate everything
+            func = tool
+            schema = extract_function_schema(func)
+        else:
+            # Format 2 or 3: Dict with function
+            func = tool["function"]
+
+            if "parameters" in tool:
+                # Format 3: Manual schema (backward compatible)
+                schema = {
+                    "name": func.__name__,
+                    "description": tool.get("description", ""),
+                    "parameters": tool["parameters"]
+                }
+            else:
+                # Format 2: Auto-generate schema from function
+                schema = extract_function_schema(func)
+
+                # Allow description override
+                if "description" in tool:
+                    schema["description"] = tool["description"]
+
         func_name = func.__name__
 
         openai_tools.append({
             "type": "function",
-            "function": {
-                "name": func_name,
-                "description": tool["description"],
-                "parameters": tool["parameters"]
-            }
+            "function": schema
         })
 
         tool_map[func_name] = func
@@ -88,7 +110,7 @@ def chat_factory(
     evaluator_model = evaluator_model or ChatModel(model_name="gpt-4o-mini")
 
     # Convert custom tools to OpenAI format and create tool map
-    openai_tools, tool_map = _convert_custom_tools_to_openai(tools)
+    openai_tools, tool_map = _convert_tools_to_openai(tools)
 
     def chat(message, history):
 
@@ -128,11 +150,7 @@ def chat_factory(
                 tools=openai_tools,
             )
             while isinstance(reply, list):
-                messages.append({
-                    "role": "assistant",
-                    "content": None,
-                    "tool_calls": reply
-                })
+                messages.append({"role": "assistant", "content": None, "tool_calls": reply})
                 messages += handle_tool_call(reply)
                 reply = generator_model.generate_response(
                     messages=messages,

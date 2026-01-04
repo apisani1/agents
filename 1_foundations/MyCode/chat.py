@@ -26,18 +26,36 @@ def push(text):
     )
 
 
-def record_user_details(email, name="Name not provided", notes="not provided"):
+def record_user_details(email: str, name: str = "Name not provided", notes: str = "not provided"):
+    """Record user details for follow-up contact.
+
+    Args:
+        email: The email address of this user
+        name: The user's name, if they provided it
+        notes: Any additional information about the conversation
+
+    Returns:
+        dict: Confirmation of recording
+    """
     push(f"Recording {name} with email {email} and notes {notes}")
     return {"recorded": "ok"}
 
 
-def record_unknown_question(question):
+def record_unknown_question(question: str):
+    """Record questions that couldn't be answered.
+
+    Args:
+        question: The question that couldn't be answered
+
+    Returns:
+        dict: Confirmation of recording
+    """
     push(f"Recording {question}")
     return {"recorded": "ok"}
 
 
 record_user_details_json = {
-    "name": "record_user_details",
+    "function": record_user_details,
     "description": "Use this tool to record that a user is interested in being in touch and provided an email address",
     "parameters": {
         "type": "object",
@@ -55,7 +73,7 @@ record_user_details_json = {
 }
 
 record_unknown_question_json = {
-    "name": "record_unknown_question",
+    "function": record_unknown_question,
     "description": "Always use this tool to record any question that couldn't be answered as you didn't know the answer",
     "parameters": {
         "type": "object",
@@ -67,9 +85,20 @@ record_unknown_question_json = {
     },
 }
 
+# Tool Definition Options:
+# Option 1: Simplest - just pass functions (auto-generates schema from type hints and docstrings)
+# tools = [record_user_details, record_unknown_question]
+
+# Option 2: Auto-generate with description override
+# tools = [
+#     {"function": record_user_details, "description": "Custom description"},
+#     {"function": record_unknown_question}
+# ]
+
+# Option 3: Manual schema (backward compatible - current approach)
 tools = [
-    {"type": "function", "function": record_user_details_json},
-    {"type": "function", "function": record_unknown_question_json},
+    record_user_details_json,
+    record_unknown_question_json,
 ]
 
 
