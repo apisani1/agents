@@ -13,6 +13,8 @@ from pydantic import BaseModel
 from models import ChatModel
 from schema_utils import extract_function_schema
 
+load_dotenv(find_dotenv(), override=True)
+
 
 class Evaluation(BaseModel):
     is_acceptable: bool
@@ -70,21 +72,17 @@ def _convert_tools_to_openai(custom_tools):
             func = tool.get("function")
 
             if func is None:
-                raise ValueError(
-                    f"Tool dict must have 'function' key. Got: {list(tool.keys())}"
-                )
+                raise ValueError(f"Tool dict must have 'function' key. Got: {list(tool.keys())}")
 
             if not callable(func):
-                raise TypeError(
-                    f"Tool 'function' must be callable, got {type(func).__name__}"
-                )
+                raise TypeError(f"Tool 'function' must be callable, got {type(func).__name__}")
 
             if "parameters" in tool:
                 # Format 3: Manual schema (backward compatible)
                 schema = {
                     "name": func.__name__,
                     "description": tool.get("description", ""),
-                    "parameters": tool["parameters"]
+                    "parameters": tool["parameters"],
                 }
             else:
                 # Format 2: Auto-generate schema from function
@@ -94,16 +92,11 @@ def _convert_tools_to_openai(custom_tools):
                 if "description" in tool:
                     schema["description"] = tool["description"]
         else:
-            raise TypeError(
-                f"Tool must be a callable or dict, got {type(tool).__name__}"
-            )
+            raise TypeError(f"Tool must be a callable or dict, got {type(tool).__name__}")
 
         func_name = func.__name__
 
-        openai_tools.append({
-            "type": "function",
-            "function": schema
-        })
+        openai_tools.append({"type": "function", "function": schema})
 
         tool_map[func_name] = func
 
@@ -118,7 +111,6 @@ def chat_factory(
     response_limit: int = 5,
     tools: Optional[List] = None,
 ):
-    load_dotenv(find_dotenv(), override=True)
 
     generator_model = generator_model or ChatModel(model_name="gpt-4o-mini")
     evaluator_model = evaluator_model or ChatModel(model_name="gpt-4o-mini")
