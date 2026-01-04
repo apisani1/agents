@@ -65,9 +65,19 @@ def _convert_tools_to_openai(custom_tools):
             # Format 1: Just a function - auto-generate everything
             func = tool
             schema = extract_function_schema(func)
-        else:
+        elif isinstance(tool, dict):
             # Format 2 or 3: Dict with function
-            func = tool["function"]
+            func = tool.get("function")
+
+            if func is None:
+                raise ValueError(
+                    f"Tool dict must have 'function' key. Got: {list(tool.keys())}"
+                )
+
+            if not callable(func):
+                raise TypeError(
+                    f"Tool 'function' must be callable, got {type(func).__name__}"
+                )
 
             if "parameters" in tool:
                 # Format 3: Manual schema (backward compatible)
@@ -83,6 +93,10 @@ def _convert_tools_to_openai(custom_tools):
                 # Allow description override
                 if "description" in tool:
                     schema["description"] = tool["description"]
+        else:
+            raise TypeError(
+                f"Tool must be a callable or dict, got {type(tool).__name__}"
+            )
 
         func_name = func.__name__
 
